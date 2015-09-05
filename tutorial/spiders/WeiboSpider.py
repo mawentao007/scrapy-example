@@ -1,6 +1,9 @@
 #encoding=utf-8
+
+#一个初级版本，使用自己的cookie，爬.cn下的数据。cookie请自行获取谢谢。
+
+
 import scrapy
-import re
 import time
 from tutorial.WeiboItem import WeiboItem
 
