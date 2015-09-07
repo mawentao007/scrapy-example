@@ -20,17 +20,26 @@ class WeiboSpider(scrapy.Spider):
         #sumainUrl = "http://m.weibo.cn/u/2118407073"
         suurlBase = "http://m.weibo.cn/page/json?containerid=1005052118407073_-_WEIBO_SECOND_PROFILE_WEIBO&page="
         sufirstToParse = "http://m.weibo.cn/page/tpl?containerid=1005052118407073_-_WEIBO_SECOND_PROFILE_WEIBO&itemid=&title=%E5%85%A8%E9%83%A8%E5%BE%AE%E5%8D%9A"
+        suMainUrl = "http://m.weibo.cn/u/2118407073"
 
         myurlBase = "http://m.weibo.cn/page/json?containerid=1005051799756001_-_WEIBO_SECOND_PROFILE_WEIBO&page="
         myfirstToParse = "http://m.weibo.cn/page/tpl?containerid=1005051799756001_-_WEIBO_SECOND_PROFILE_WEIBO&itemid=&title=%E5%85%A8%E9%83%A8%E5%BE%AE%E5%8D%9A"
-
-        urlBase = suurlBase
-        firstToParse = sufirstToParse
+        myMainUrl = "http://m.weibo.cn/u/1799756001"
+#配置要抓取的url
+        config = "su"
+        if config is "su":
+            urlBase = suurlBase
+            firstToParse = sufirstToParse
+            mainUrl = suMainUrl
+        else:
+            urlBase = myurlBase
+            firstToParse = myfirstToParse
+            mainUrl = myMainUrl
 
 #第一个请求发出并获得结果，默认回调parse函数
         def start_requests(self):
             #起始url可以为空
-            return [scrapy.FormRequest( "http://m.weibo.cn/u/2118407073",
+            return [scrapy.FormRequest( self.mainUrl,
                                     headers=self.user_agent)]
 
         def parse(self, response):
@@ -66,7 +75,13 @@ class WeiboSpider(scrapy.Spider):
                 data = self.parse_html_json(response)
                 for num in range(0,len(data['stage']['page'][1]['card_group'])):
                      item = WeiboItem()
-                     item['post'] = data['stage']['page'][1]['card_group'][num]['mblog']['text']
+                     mblog = data['stage']['page'][1]['card_group'][num]['mblog']
+                     if mblog.has_key("retweeted_status"):
+                        item['post'] = mblog['text']
+                        item['repost'] = mblog['retweeted_status']['text']
+                     else:
+                        item['post'] = mblog['text']
+                        item['repost'] = None
                      yield item
 
 
@@ -77,9 +92,11 @@ class WeiboSpider(scrapy.Spider):
                     mblog = jsonresponse["cards"][0]["card_group"][num]["mblog"]
                     item = WeiboItem()
                     if mblog.has_key("retweeted_status"):
-                                    item["post"]=mblog["retweeted_status"]["text"]
+                                    item["repost"]=mblog["retweeted_status"]["text"]
+                                    item["post"] = mblog["text"]
                     else:
                                     item["post"]=mblog["text"]
+                                    item["repost"] = None
                     yield item
 
 
