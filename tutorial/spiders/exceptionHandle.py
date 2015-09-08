@@ -6,20 +6,29 @@ import time
 import json
 import re
 from bs4 import BeautifulSoup
+from scrapy.xlib.pydispatch import dispatcher
+from scrapy import signals
 from tutorial.WeiboItem import WeiboItem
 
 
 
 class WeiboSpider(scrapy.Spider):
 
-#TODO 错误处理，失败的请求如何重新发起
-        name = "googleWeibo"
+#默认之处理200-300之间的回复，这里增加一个
+        handle_httpstatus_list = [404]
+#异常的url
+        exceptionUrls = []
+#错误的url
+        #errorUrl = []
+
+
+        name = "exceptionHandle"
 
 #选取请求头部很重要，这里选取的是谷歌的爬虫头部
         user_agent = {'User-agent':'spider'}
         #user_agent = {'User-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 8_3 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) Version/8.0 Mobile/12F70 Safari/600.1.4 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
 
-        #sumainUrl = "http://m.weibo.cn/u/2118407073"
+
         suurlBase = "http://m.weibo.cn/page/json?containerid=1005052118407073_-_WEIBO_SECOND_PROFILE_WEIBO&page="
         sufirstToParse = "http://m.weibo.cn/page/tpl?containerid=1005052118407073_-_WEIBO_SECOND_PROFILE_WEIBO&itemid=&title=%E5%85%A8%E9%83%A8%E5%BE%AE%E5%8D%9A"
         suMainUrl = "http://m.weibo.cn/u/2118407073"
@@ -28,7 +37,7 @@ class WeiboSpider(scrapy.Spider):
         myfirstToParse = "http://m.weibo.cn/page/tpl?containerid=1005051799756001_-_WEIBO_SECOND_PROFILE_WEIBO&itemid=&title=%E5%85%A8%E9%83%A8%E5%BE%AE%E5%8D%9A"
         myMainUrl = "http://m.weibo.cn/u/1799756001"
 #配置要抓取的url
-        config = "u"
+        config = "su"
         if config is "su":
             urlBase = suurlBase
             firstToParse = sufirstToParse
@@ -41,23 +50,25 @@ class WeiboSpider(scrapy.Spider):
 #第一个请求发出并获得结果，默认回调parse函数
         def start_requests(self):
             #起始url可以为空
-            return [scrapy.FormRequest( self.mainUrl,
+            return [scrapy.FormRequest(self.mainUrl,
                                     headers=self.user_agent)]
 
         def parse(self, response):
-            data = self.parse_html_json(response)
-            postNumStr = data['stage']['page'][1]['mblogNum']     #获取微博总数并计算需要抓取的页面数量
-            postNum = int(postNumStr)
-            pageNum = (postNum % 10 + 9) / 10 + postNum/10
+            if response.status == 404:
+                self.handle_error_url(response)
+            else:
+                data = self.parse_html_json(response)
+                postNumStr = data['stage']['page'][1]['mblogNum']     #获取微博总数并计算需要抓取的页面数量
+                postNum = int(postNumStr)
+                pageNum = (postNum % 10 + 9) / 10 + postNum / 10
 
-            #for  page in range(1,pageNum+1):
-            for page in [305,320,343]:
-                time.sleep(5)
-                if page is 1:
-                    yield scrapy.Request(self.firstToParse,headers=self.user_agent,callback=self.parse_html_contents)
-                else:
-                    url = self.urlBase + str(page)
-                    yield scrapy.Request(url,headers=self.user_agent,callback=self.parse_json_contents)
+                for page in range(1, pageNum + 1):
+                    time.sleep(2)
+                    if page is 1:
+                        yield scrapy.Request(self.firstToParse, headers=self.user_agent, callback=self.parse_html_contents)
+                    else:
+                        url = self.urlBase + str(page)
+                        yield scrapy.Request(url, headers=self.user_agent, callback=self.parse_json_contents)
 
 
 #该函数首先通过soup从html中解析出包含json数据的元素
@@ -105,8 +116,21 @@ class WeiboSpider(scrapy.Spider):
 
 
 
+        def handle_error_url(self,response):
+            if response.url not in self.exceptionUr:
+                self.exceptionUrl.append(response.url)
 
+        def handle_spider_closed(spider, reason):
+            spider.crawler.stats.set_value('exceptionUrls', ','.join(spider.exceptionUrls))
 
+#处理异常
+        def process_exception(self, response, exception, spider):
+            ex_class = "%s.%s" % (exception.__class__.__module__, exception.__class__.__name__)
+            self.crawler.stats.inc_value('downloader/exception_count', spider=spider)
+            self.crawler.stats.inc_value('downloader/exception_type_count/%s' % ex_class, spider=spider)
+
+#信号系统，将相应的信号和处理方法进行关联
+        dispatcher.connect(handle_spider_closed, signals.spider_closed)
 
 
 
